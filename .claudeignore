@@ -1,0 +1,5 @@
+# Sensitive config files with secrets
+**/config.user.yaml
+**/config.runtime.yaml
+.env
+.env.*

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pixel Character</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1e1e1e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    flex-direction: column;
+    gap: 40px;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .label {
+    color: #666;
+    font-family: monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c" width="9" height="11" style="width:270px;height:330px;"></canvas>
+<div class="label">× 30 scale</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// Color palette
+const _ = null;           // transparent / background
+const B = '#C87848';      // copper body
+const D = '#2A1208';      // dark (eyes, shadows)
+const S = '#E09060';      // highlight
+
+// Pixel grid — 9 wide × 11 tall
+// Each row = one pixel row of the character
+const sprite = [
+  [_,_,B,_,_,_,B,_,_],  // row 0  — antenna bumps
+  [_,B,B,B,B,B,B,B,_],  // row 1  — top of head
+  [_,B,B,B,B,B,B,B,_],  // row 2  — upper head
+  [_,B,D,D,B,D,D,B,_],  // row 3  — eyes
+  [_,B,B,B,B,B,B,B,_],  // row 4  — lower head
+  [_,B,B,B,B,B,B,B,_],  // row 5  — neck / top body
+  [_,B,B,B,B,B,B,B,_],  // row 6  — body
+  [_,B,B,B,B,B,B,B,_],  // row 7  — lower body
+  [_,_,_,B,B,B,B,_,_],  // row 8  — waist
+  [_,_,B,B,_,_,B,B,_],  // row 9  — legs
+  [_,_,B,B,_,_,B,B,_],  // row 10 — leg feet
+];
+
+// Draw each pixel
+sprite.forEach((row, y) => {
+  row.forEach((color, x) => {
+    if (color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  });
+});
+</script>
+</body>
+</html>
