@@ -1,15 +1,20 @@
-"""Agent and AgentSession for step 00."""
+"""Agent and AgentSession for step 01 with tool support."""
 
+import asyncio
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from litellm.types.completion import ChatCompletionMessageParam as Message
+from litellm.types.completion import (
+    ChatCompletionMessageParam as Message,
+    ChatCompletionMessageToolCallParam,
+)
 
-from sage.provider.llm import LLMProvider
+from sage.provider.llm import LLMProvider, LLMToolCall
+from sage.tools.registry import ToolRegistry
 from sage.core.session_state import SessionState
-
 
 if TYPE_CHECKING:
     from sage.core.agent_loader import AgentDef
@@ -34,7 +39,9 @@ class Agent:
             messages=[],
         )
 
-        session = AgentSession(agent=self, state=state)
+        # Create tool registry with builtins
+        tools = ToolRegistry.with_builtins()
+        session = AgentSession(agent=self, state=state, tools=tools)
         return session
 
 
@@ -44,6 +51,7 @@ class AgentSession:
 
     agent: Agent
     state: SessionState
+    tools: ToolRegistry
     started_at: datetime = field(default_factory=datetime.now)
 
     @property
@@ -56,10 +64,68 @@ class AgentSession:
         user_msg: Message = {"role": "user", "content": message}
         self.state.add_message(user_msg)
 
-        messages = self.state.build_messages()
-        response = await self.agent.llm.chat(messages)
+        tool_schemas = self.tools.get_tool_schemas()
 
-        assistant_msg: Message = {"role": "assistant", "content": response}
-        self.state.add_message(assistant_msg)
+        while True:
+            messages = self.state.build_messages()
+            content, tool_calls = await self.agent.llm.chat(messages, tool_schemas)
 
-        return response
+            tool_call_dicts: list[ChatCompletionMessageToolCallParam] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": tc.arguments},
+                }
+                for tc in tool_calls
+            ]
+            assistant_msg: Message = {
+                "role": "assistant",
+                "content": content,
+            }
+            if tool_call_dicts:
+                assistant_msg["tool_calls"] = tool_call_dicts
+            self.state.add_message(assistant_msg)
+
+            if not tool_calls:
+                break
+
+            await self._handle_tool_calls(tool_calls)
+
+            continue
+
+        return content
+
+    async def _handle_tool_calls(
+        self,
+        tool_calls: list["LLMToolCall"],
+    ) -> None:
+        """Handle tool calls from the LLM response."""
+        tool_call_results = await asyncio.gather(
+            *[self._execute_tool_call(tool_call) for tool_call in tool_calls]
+        )
+
+        for tool_call, result in zip(tool_calls, tool_call_results):
+            tool_msg: Message = {
+                "role": "tool",
+                "content": result,
+                "tool_call_id": tool_call.id,
+            }
+            self.state.add_message(tool_msg)
+
+    async def _execute_tool_call(
+        self,
+        tool_call: LLMToolCall,
+    ) -> str:
+        """Execute a single tool call."""
+        # Extract key arguments
+        try:
+            args = json.loads(tool_call.arguments)
+        except json.JSONDecodeError:
+            args = {}
+
+        try:
+            result = await self.tools.execute_tool(tool_call.name, session=self, **args)
+        except Exception as e:
+            result = f"Error executing tool: {e}"
+
+        return result
